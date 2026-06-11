@@ -30,6 +30,7 @@ const CSS = `
           box-shadow:0 1px 2px rgba(17,24,28,.04),0 14px 36px -10px rgba(17,24,28,.10);
           overflow:hidden; cursor:grab; touch-action:none; }
   .stage.grabbing{ cursor:grabbing; }
+  .stage.grabbing, .stage.grabbing *{ user-select:none; -webkit-user-select:none; }
   .pz{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
   .mermaid{ padding:8px; display:block; }
   .mermaid svg{ display:block; }
@@ -149,25 +150,38 @@ async function main() {
   document.getElementById('zout').onclick = () => { const r = stage.getBoundingClientRect(); zoomTo(1/1.2, r.width/2, r.height/2); };
   document.getElementById('zreset').onclick = fit;
 
-  // wheel: scroll = pan, ctrl/⌘ (trackpad pinch) = zoom toward cursor
+  // wheel: scroll = pan, ctrl/⌘ (trackpad pinch reports as wheel+ctrlKey) = zoom toward cursor.
+  // deltaMode normalization: the same gesture reports deltaY in px (0), lines (1), or pages (2)
+  // depending on device/OS — without this, line-mode mice get ~3 instead of ~100 and zoom feels dead.
+  const ZOOM_SPEED = 0.005;   // exponential zoom per normalized px of wheel delta — THE speed knob
+  const MAX_WHEEL_PX = 60;    // cap one event's contribution so a single mouse notch can't teleport
   stage.addEventListener('wheel', e => {
-    e.preventDefault(); const r = stage.getBoundingClientRect();
-    if (e.ctrlKey || e.metaKey) zoomTo(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
-    else { tx -= e.deltaX; ty -= e.deltaY; apply(); }
+    if (e.cancelable) e.preventDefault();
+    const r = stage.getBoundingClientRect();
+    const PX = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
+    if (e.ctrlKey || e.metaKey) {
+      const dy = Math.max(-MAX_WHEEL_PX, Math.min(MAX_WHEEL_PX, e.deltaY * PX));
+      zoomTo(Math.exp(-dy * ZOOM_SPEED), e.clientX - r.left, e.clientY - r.top);
+    } else { tx -= e.deltaX * PX; ty -= e.deltaY * PX; apply(); }
   }, { passive:false });
 
   // pointer: 1 = drag-pan, 2 = pinch-zoom; presses on the controls keep their clicks
   const pts = new Map(); let pinchDist = 0;
   stage.addEventListener('pointerdown', e => {
     if (e.target.closest('.controls')) return;
-    stage.setPointerCapture(e.pointerId);
+    if (e.cancelable) e.preventDefault();           // stop a text selection from ever starting
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}  // fast pans that leave the element don't drop
     pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
     if (pts.size === 1) stage.classList.add('grabbing');
   });
   stage.addEventListener('pointermove', e => {
     if (!pts.has(e.pointerId)) return;
     const prev = pts.get(e.pointerId); pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
-    if (pts.size === 1) { tx += e.clientX - prev.x; ty += e.clientY - prev.y; apply(); }
+    if (pts.size === 1) {
+      const sel = window.getSelection();            // safety net: clear any highlight that leaked in
+      if (sel && !sel.isCollapsed) sel.removeAllRanges();
+      tx += e.clientX - prev.x; ty += e.clientY - prev.y; apply();
+    }
     else if (pts.size === 2) {
       const a = [...pts.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), r = stage.getBoundingClientRect();
       if (pinchDist) zoomTo(d / pinchDist, (a[0].x + a[1].x)/2 - r.left, (a[0].y + a[1].y)/2 - r.top);
