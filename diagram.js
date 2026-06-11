@@ -31,7 +31,12 @@ const CSS = `
           overflow:hidden; cursor:grab; touch-action:none; }
   .stage.grabbing{ cursor:grabbing; }
   .stage.grabbing, .stage.grabbing *{ user-select:none; -webkit-user-select:none; }
-  .pz{ position:absolute; top:0; left:0; transform-origin:0 0; will-change:transform; }
+  .pz{ position:absolute; top:0; left:0; transform-origin:0 0; }
+  .pz.animate{ transition: transform 220ms cubic-bezier(.23,1,.32,1), opacity 220ms ease-out; will-change:transform; }
+  .stage.grabbing .pz{ will-change:transform; }
+  @media (prefers-reduced-motion: reduce){
+    .pz.animate{ transition: opacity 160ms ease-out; }   /* keep fade, drop motion */
+  }
   .mermaid{ padding:8px; display:block; }
   .mermaid svg{ display:block; }
   .mermaid .node rect,.mermaid .node polygon{ rx:7px; } .mermaid .cluster rect{ rx:12px; }
@@ -46,8 +51,11 @@ const CSS = `
              border:1px solid #e2e5e9; border-radius:11px; padding:5px; box-shadow:0 6px 18px -8px rgba(17,24,28,.18); }
   .controls button{ font-family:var(--font-mono); font-size:13px; color:#1a1f24; background:#fff; border:1px solid #e2e5e9;
              width:30px; height:30px; border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center;
-             line-height:1; transition:background .12s,border-color .12s; }
-  .controls button:hover{ background:#f1f3f5; border-color:#cdd2d8; }
+             line-height:1; transition:background .12s ease,border-color .12s ease,transform .14s cubic-bezier(.23,1,.32,1); }
+  .controls button:active{ transform:scale(0.94); }
+  @media (hover: hover) and (pointer: fine){
+    .controls button:hover{ background:#f1f3f5; border-color:#cdd2d8; }   /* hover only where hover exists — no stuck state on touch */
+  }
   .controls .reset{ width:auto; padding:0 11px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
   .controls .zlabel{ font-family:var(--font-mono); font-size:11px; color:#5f666d; min-width:42px; text-align:center; }
   .hint{ position:absolute; left:14px; bottom:14px; font-family:var(--font-mono); font-size:11px; color:#9aa1a9;
@@ -146,22 +154,59 @@ async function main() {
     tx = (r.width - natW * scale) / 2; ty = (r.height - natH * scale) / 2; apply();
   }
   fit();
-  document.getElementById('zin').onclick = () => { const r = stage.getBoundingClientRect(); zoomTo(1.2, r.width/2, r.height/2); };
-  document.getElementById('zout').onclick = () => { const r = stage.getBoundingClientRect(); zoomTo(1/1.2, r.width/2, r.height/2); };
-  document.getElementById('zreset').onclick = fit;
+
+  /* ---- glide: animate ONLY discrete actions (buttons, entrance) — gestures stay 1:1 ---- */
+  let glideTimer;
+  function glide(fn) {
+    pz.classList.add('animate');
+    fn();
+    clearTimeout(glideTimer);
+    glideTimer = setTimeout(() => pz.classList.remove('animate'), 240);
+  }
+  function killGlide() { clearTimeout(glideTimer); pz.classList.remove('animate'); }
+
+  document.getElementById('zin').onclick = () => glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1.2, r.width/2, r.height/2); });
+  document.getElementById('zout').onclick = () => glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1/1.2, r.width/2, r.height/2); });
+  document.getElementById('zreset').onclick = () => glide(fit);
+
+  /* ---- entrance: one-time fade + settle to the exact fit framing ---- */
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const entranceTarget = { s: scale, tx, ty };
+  pz.style.opacity = '0';
+  if (!reduceMotion) {
+    const r = stage.getBoundingClientRect();
+    zoomTo(0.985, r.width / 2, r.height / 2);   // start a hair smaller, centered
+  }
+  // double rAF so the browser paints the small/transparent state first — otherwise it snaps
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    glide(() => {
+      pz.style.opacity = '1';
+      scale = entranceTarget.s; tx = entranceTarget.tx; ty = entranceTarget.ty; apply();
+    });
+  }));
 
   // wheel: scroll = pan, ctrl/⌘ (trackpad pinch reports as wheel+ctrlKey) = zoom toward cursor.
   // deltaMode normalization: the same gesture reports deltaY in px (0), lines (1), or pages (2)
   // depending on device/OS — without this, line-mode mice get ~3 instead of ~100 and zoom feels dead.
-  const ZOOM_SPEED = 0.005;   // exponential zoom per normalized px of wheel delta — THE speed knob
+  // Trackpad pinch sends TINY deltas (~0.5–3) while a mouse notch sends ~100 — one speed constant
+  // can't serve that 50× range, so pinch and wheel get separate knobs.
+  const PINCH_SPEED = 0.018;  // trackpad pinch: tiny deltas, needs punch (tune 0.012–0.025)
+  const WHEEL_SPEED = 0.005;  // ctrl + real mouse wheel: big notches, stays calm
   const MAX_WHEEL_PX = 60;    // cap one event's contribution so a single mouse notch can't teleport
+  let wcTimer;
   stage.addEventListener('wheel', e => {
     if (e.cancelable) e.preventDefault();
+    killGlide();                                   // gestures are always instant — never animated
+    pz.style.willChange = 'transform';             // transient layer promotion while wheeling
+    clearTimeout(wcTimer); wcTimer = setTimeout(() => { pz.style.willChange = ''; }, 300);
     const r = stage.getBoundingClientRect();
     const PX = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
     if (e.ctrlKey || e.metaKey) {
-      const dy = Math.max(-MAX_WHEEL_PX, Math.min(MAX_WHEEL_PX, e.deltaY * PX));
-      zoomTo(Math.exp(-dy * ZOOM_SPEED), e.clientX - r.left, e.clientY - r.top);
+      const raw = e.deltaY * PX;
+      const pinch = e.ctrlKey && Math.abs(raw) < 50;   // small ctrl-wheel = trackpad pinch
+      const speed = pinch ? PINCH_SPEED : WHEEL_SPEED;
+      const dy = Math.max(-MAX_WHEEL_PX, Math.min(MAX_WHEEL_PX, raw));
+      zoomTo(Math.exp(-dy * speed), e.clientX - r.left, e.clientY - r.top);
     } else { tx -= e.deltaX * PX; ty -= e.deltaY * PX; apply(); }
   }, { passive:false });
 
@@ -170,6 +215,7 @@ async function main() {
   stage.addEventListener('pointerdown', e => {
     if (e.target.closest('.controls')) return;
     if (e.cancelable) e.preventDefault();           // stop a text selection from ever starting
+    killGlide();                                    // a grab interrupts any gliding zoom — drag stays 1:1
     try { stage.setPointerCapture(e.pointerId); } catch (err) {}  // fast pans that leave the element don't drop
     pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
     if (pts.size === 1) stage.classList.add('grabbing');
