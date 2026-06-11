@@ -155,6 +155,23 @@ async function main() {
   }
   fit();
 
+  /* ---- late-settle re-fit: font swap can resize the SVG after render, leaving the initial
+     auto-fit framed against stale measurements. Re-measure once things settle and re-fit —
+     but only if the user hasn't started interacting (never fight a gesture). ---- */
+  let interacted = false;
+  function remeasure() {
+    if (!svg) return;
+    const m = new DOMMatrix(getComputedStyle(pz).transform);
+    const r2 = svg.getBoundingClientRect();
+    const w = r2.width / (m.a || 1), h = r2.height / (m.d || 1);
+    if (Math.abs(w - natW) > 1 || Math.abs(h - natH) > 1) {
+      natW = w; natH = h;
+      if (!interacted) glide(fit);
+    }
+  }
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', remeasure);
+  setTimeout(remeasure, 700);
+
   /* ---- glide: animate ONLY discrete actions (buttons, entrance) — gestures stay 1:1 ---- */
   let glideTimer;
   function glide(fn) {
@@ -165,8 +182,8 @@ async function main() {
   }
   function killGlide() { clearTimeout(glideTimer); pz.classList.remove('animate'); }
 
-  document.getElementById('zin').onclick = () => glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1.2, r.width/2, r.height/2); });
-  document.getElementById('zout').onclick = () => glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1/1.2, r.width/2, r.height/2); });
+  document.getElementById('zin').onclick = () => { interacted = true; glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1.2, r.width/2, r.height/2); }); };
+  document.getElementById('zout').onclick = () => { interacted = true; glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1/1.2, r.width/2, r.height/2); }); };
   document.getElementById('zreset').onclick = () => glide(fit);
 
   /* ---- entrance: one-time fade + settle to the exact fit framing ---- */
@@ -196,6 +213,7 @@ async function main() {
   let wcTimer;
   stage.addEventListener('wheel', e => {
     if (e.cancelable) e.preventDefault();
+    interacted = true;
     killGlide();                                   // gestures are always instant — never animated
     pz.style.willChange = 'transform';             // transient layer promotion while wheeling
     clearTimeout(wcTimer); wcTimer = setTimeout(() => { pz.style.willChange = ''; }, 300);
@@ -215,6 +233,7 @@ async function main() {
   stage.addEventListener('pointerdown', e => {
     if (e.target.closest('.controls')) return;
     if (e.cancelable) e.preventDefault();           // stop a text selection from ever starting
+    interacted = true;
     killGlide();                                    // a grab interrupts any gliding zoom — drag stays 1:1
     try { stage.setPointerCapture(e.pointerId); } catch (err) {}  // fast pans that leave the element don't drop
     pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
