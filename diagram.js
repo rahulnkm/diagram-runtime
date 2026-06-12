@@ -123,10 +123,19 @@ async function main() {
   document.querySelector('.eyebrow').textContent = document.title || 'Diagram';
   document.getElementById('graph').textContent = src;
 
+  // Label rendering mode — the big one for zoom perf. HTML labels (htmlLabels:true) render each
+  // label as HTML inside an SVG <foreignObject>, which the browser must RE-RASTERIZE every frame
+  // during a CSS-transform zoom. Standalone Chrome has the GPU headroom; the Electron preview panel
+  // does NOT, so label-dense diagrams crawl on zoom in the panel. Native SVG <text> (htmlLabels:false)
+  // composites cheaply → smooth zoom everywhere. So default to native text, and only switch to HTML
+  // labels when the graph actually uses emphasis markup that native text can't render.
+  // (<br>/<br/> work in BOTH modes, so multi-line never forces HTML.)
+  const needsHtmlLabels = /<\/?(?:i|b|em|strong|span|u|sub|sup|small|mark|font|code|a)\b/i.test(src);
   const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
   mermaid.initialize({
     startOnLoad:false, securityLevel:'loose', theme:'base', themeVariables:THEME,
-    flowchart:{ curve:'basis', htmlLabels:true, nodeSpacing:58, rankSpacing:70, padding:16, useMaxWidth:false },
+    htmlLabels: needsHtmlLabels,
+    flowchart:{ curve:'basis', htmlLabels:needsHtmlLabels, nodeSpacing:58, rankSpacing:70, padding:16, useMaxWidth:false },
     sequence:{ useMaxWidth:false, mirrorActors:false, messageFontFamily:"'Geist Mono',monospace" }
   });
   try { await document.fonts.ready; } catch (e) {}
