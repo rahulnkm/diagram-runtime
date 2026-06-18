@@ -19,15 +19,9 @@ const CSS = `
   :root{ --font-sans:'Geist',ui-sans-serif,system-ui,-apple-system,sans-serif;
          --font-mono:'Geist Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace; }
   html,body{ margin:0; height:100%; background:#ffffff; overflow:hidden; }
-  body{ color:#1a1f24; font-family:var(--font-sans); display:flex; flex-direction:column;
-        height:100vh; padding:24px 28px 28px; box-sizing:border-box;
-        background:radial-gradient(120% 80% at 50% -10%, #ffffff 0%, #f3f4f6 70%); }
-  header{ display:flex; align-items:center; gap:9px; margin:0 4px 14px; flex:0 0 auto; }
-  header .mark{ width:8px; height:8px; border-radius:2px; background:#0d74ce; }
-  header .eyebrow{ font-family:var(--font-mono); font-weight:500; font-size:12px; letter-spacing:.14em;
-                   text-transform:uppercase; color:#5f666d; }
-  .stage{ position:relative; flex:1 1 auto; background:#fff; border:1px solid #e2e5e9; border-radius:16px;
-          box-shadow:0 1px 2px rgba(17,24,28,.04),0 14px 36px -10px rgba(17,24,28,.10);
+  body{ color:#1a1f24; font-family:var(--font-sans); height:100vh; margin:0; padding:0; box-sizing:border-box; }
+  /* whiteboard goes fullscreen: no frame, no title header — the canvas IS the page, edge to edge. */
+  .stage{ position:fixed; inset:0; background:radial-gradient(120% 80% at 50% -10%, #ffffff 0%, #f3f4f6 70%);
           overflow:hidden; cursor:grab; touch-action:none; }
   .stage.grabbing{ cursor:grabbing; }
   .stage.grabbing, .stage.grabbing *{ user-select:none; -webkit-user-select:none; }
@@ -109,7 +103,6 @@ async function main() {
   document.head.appendChild(style);
 
   document.body.innerHTML =
-    '<header><span class="mark"></span><span class="eyebrow"></span></header>' +
     '<div class="stage" id="stage">' +
       '<div class="pz" id="pz"><pre class="mermaid" id="graph"></pre></div>' +
       '<div class="controls">' +
@@ -120,7 +113,6 @@ async function main() {
       '</div>' +
       '<div class="hint">scroll / drag to pan · pinch or +/− to zoom</div>' +
     '</div>';
-  document.querySelector('.eyebrow').textContent = document.title || 'Diagram';
   document.getElementById('graph').textContent = src;
 
   // Label rendering mode — the big one for zoom perf. HTML labels (htmlLabels:true) render each
