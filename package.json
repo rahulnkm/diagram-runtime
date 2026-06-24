@@ -1,0 +1,19 @@
+{
+  "name": "diagram-runtime",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Shared runtime for the `diagram` skill: SVG render (diagram.js) + lazy-loaded tldraw edit mode (editor.js).",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/editor.jsx --bundle --format=esm --minify --loader:.css=text --define:process.env.NODE_ENV='\"production\"' --outfile=editor.js"
+  },
+  "dependencies": {
+    "@tldraw/mermaid": "5.1.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "tldraw": "5.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

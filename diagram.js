@@ -82,6 +82,19 @@ const THEME = {
   labelColor:'#1a1f24', altBackground:'#f7f8fa', classText:'#1a1f24', errorBkgColor:'#ffeff0', errorTextColor:'#ce2c31'
 };
 
+// Stable per-diagram id from the mermaid source (djb2 → base36). Used to key tldraw's
+// IndexedDB persistence + the "was this diagram ever edited?" flag, so the SAME diagram
+// restores your edits on reopen and a different/re-generated one starts fresh.
+function hashKey(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+// editor.js = the heavy tldraw edit-mode bundle. NOT cache-busted (multi-MB; caches
+// normally and we purge jsDelivr on the rare change). diagram.js stays cache-busted.
+const EDITOR_URL = 'https://cdn.jsdelivr.net/gh/rahulnkm/diagram-runtime@main/editor.js';
+
 async function main() {
   const srcPre = document.querySelector('pre.mermaid');
   if (!srcPre) return;
@@ -97,6 +110,31 @@ async function main() {
   if (di !== -1) lines.splice(di + 1, 0, ROLES);
   const src = lines.join('\n');
 
+  /* ---- edit mode (opt-in): lazy-load tldraw and convert the graph into editable shapes.
+     The default view below stays a fast SVG render. Once a diagram is edited, a flag is set
+     and every reopen boots straight into the restored canvas instead of the SVG. ---- */
+  const key = hashKey(src);
+  const EDITED_FLAG = 'diagram-edited:' + key;
+  async function enterEdit() {
+    try { localStorage.setItem(EDITED_FLAG, '1'); } catch (e) {}
+    document.body.innerHTML =
+      '<div id="tlroot" style="position:fixed;inset:0;background:#fff;"></div>' +
+      '<div id="tlload" style="position:fixed;inset:0;display:flex;align-items:center;' +
+      'justify-content:center;font:12px ui-monospace,Menlo,monospace;color:#9aa1a9;' +
+      'letter-spacing:.05em;pointer-events:none;">loading editor…</div>';
+    try {
+      const mod = await import(EDITOR_URL);
+      await mod.mountEditor(document.getElementById('tlroot'), src, 'diagram-' + key);
+      const l = document.getElementById('tlload'); if (l) l.remove();
+    } catch (e) {
+      const l = document.getElementById('tlload');
+      if (l) l.textContent = 'could not load editor (offline?) — reopen to retry';
+      console.error('[diagram] editor load failed:', e);
+    }
+  }
+  // Reopening an already-edited diagram → go straight into the editor (skip the SVG render).
+  try { if (localStorage.getItem(EDITED_FLAG)) { enterEdit(); return; } } catch (e) {}
+
   // Build the page around the graph.
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -106,6 +144,7 @@ async function main() {
     '<div class="stage" id="stage">' +
       '<div class="pz" id="pz"><pre class="mermaid" id="graph"></pre></div>' +
       '<div class="controls">' +
+        '<button class="reset" id="edit" title="Edit this diagram — draw, drag, retype">Edit</button>' +
         '<button id="zout" title="Zoom out">−</button>' +
         '<span class="zlabel" id="zlabel">100%</span>' +
         '<button id="zin" title="Zoom in">+</button>' +
@@ -186,6 +225,7 @@ async function main() {
   document.getElementById('zin').onclick = () => { interacted = true; glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1.2, r.width/2, r.height/2); }); };
   document.getElementById('zout').onclick = () => { interacted = true; glide(() => { const r = stage.getBoundingClientRect(); zoomTo(1/1.2, r.width/2, r.height/2); }); };
   document.getElementById('zreset').onclick = () => glide(fit);
+  document.getElementById('edit').onclick = enterEdit;
 
   /* ---- entrance: one-time fade + settle to the exact fit framing ---- */
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
