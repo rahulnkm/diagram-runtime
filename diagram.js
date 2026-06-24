@@ -93,7 +93,10 @@ function hashKey(s) {
 
 // editor.js = the heavy tldraw edit-mode bundle. NOT cache-busted (multi-MB; caches
 // normally and we purge jsDelivr on the rare change). diagram.js stays cache-busted.
-const EDITOR_URL = 'https://cdn.jsdelivr.net/gh/rahulnkm/diagram-runtime@main/editor.js';
+// Versioned, NOT cache-busted: editor.js is multi-MB so we don't refetch it every open —
+// but we MUST bust the webview cache when it changes, or a stale editor.js keeps crashing.
+// Bump ?v on every editor.js change. diagram.js is cache-busted, so the new ?v propagates now.
+const EDITOR_URL = 'https://cdn.jsdelivr.net/gh/rahulnkm/diagram-runtime@main/editor.js?v=2';
 
 async function main() {
   const srcPre = document.querySelector('pre.mermaid');
