@@ -131,7 +131,7 @@ async function main() {
       if (res && !res.persisted) {
         const n = document.createElement('div');
         n.textContent = 'editing in memory — changes are NOT saved on close';
-        n.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9;' +
+        n.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9;' +
           'font:11px ui-monospace,Menlo,monospace;color:#9e6c00;background:#fef7c3;border:1px solid #f5ae39;' +
           'border-radius:7px;padding:5px 10px;letter-spacing:.02em;pointer-events:none;';
         document.body.appendChild(n);
