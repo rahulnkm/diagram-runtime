@@ -124,8 +124,18 @@ async function main() {
       'letter-spacing:.05em;pointer-events:none;">loading editor…</div>';
     try {
       const mod = await import(EDITOR_URL);
-      await mod.mountEditor(document.getElementById('tlroot'), src, 'diagram-' + key);
+      const res = await mod.mountEditor(document.getElementById('tlroot'), src, 'diagram-' + key);
       const l = document.getElementById('tlload'); if (l) l.remove();
+      // When storage is blocked (the data:-URL preview launch), edits are in-memory only.
+      // Say so plainly so a closed tab doesn't silently lose work. Served over http they persist.
+      if (res && !res.persisted) {
+        const n = document.createElement('div');
+        n.textContent = 'editing in memory — changes are NOT saved on close';
+        n.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9;' +
+          'font:11px ui-monospace,Menlo,monospace;color:#9e6c00;background:#fef7c3;border:1px solid #f5ae39;' +
+          'border-radius:7px;padding:5px 10px;letter-spacing:.02em;pointer-events:none;';
+        document.body.appendChild(n);
+      }
     } catch (e) {
       const l = document.getElementById('tlload');
       if (l) l.textContent = 'could not load editor (offline?) — reopen to retry';

@@ -32,7 +32,7 @@ Flowchart nodes can be tagged `:::action`, `:::store`, `:::cache`, `:::queue`, `
 
 Each diagram has an **Edit** button that converts the rendered graph into an editable [tldraw](https://tldraw.dev) canvas — draw shapes, drag nodes, retype labels. This is a second, heavier runtime file, `editor.js` (React + tldraw + the official `@tldraw/mermaid` converter), lazy-loaded only on click so the default view stays a fast SVG render.
 
-- **Persistence:** tldraw auto-saves the canvas to IndexedDB, keyed to a hash of the mermaid source. Reopening an edited diagram boots straight into the saved canvas. No files are written.
+- **Persistence (origin-dependent):** tldraw auto-saves to IndexedDB, keyed to a hash of the mermaid source — but only when the page has a real origin. Opened over **http://localhost** it persists, and reopening boots straight into the saved canvas. Opened as a `data:` URL / `file://` (opaque origin, e.g. the Claude preview's default file launch), storage is blocked, so the editor probes IndexedDB and falls back to **in-memory editing** (no crash, edits not saved). No files are written.
 - **Source + build:** `src/editor.jsx` → `editor.js` via esbuild.
 
   ```sh
